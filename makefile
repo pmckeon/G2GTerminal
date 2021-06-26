@@ -7,7 +7,7 @@ LD = sdcc
 # delete command
 RM = del /f
 # Compiler flags go here.
-CFLAGS = -MMD -c -mz80 --peep-file peep-rules.txt
+CFLAGS = -MMD -c -mz80 -DTARGET_GG --peep-file peep-rules.txt
 # Linker flags go here.
 LDFLAGS = -mz80 --no-std-crt0 --data-loc 0xC000
 CRT0 = crt0_sms.rel

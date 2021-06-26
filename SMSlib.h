@@ -3,7 +3,7 @@
    ( part of devkitSMS - github.com/sverx/devkitSMS )
    ************************************************** */
 
-#define TARGET_GG
+// #define TARGET_GG
 /* uncomment previous line to compile for the GameGear */
 
 // #define MD_PAD_SUPPORT
@@ -336,6 +336,11 @@ void UNSAFE_SMS_VRAMmemcpy128 (unsigned int dst, void *src);
 
 /* the Interrupt Service Routines (do not modify) */
 void SMS_isr (void) __naked;
+
+#ifndef TARGET_GG
 void SMS_nmi_isr (void) __naked;
+#else
+void SMS_nmi_isr (void) __critical __interrupt;
+#endif
 
 /* EOF */

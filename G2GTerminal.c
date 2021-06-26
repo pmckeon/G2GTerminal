@@ -3,15 +3,8 @@
 #include <stdio.h>
 #include "SMSlib.h"
 
-#define BLINKSPEED 10
+#define BLINKSPEED 10 // Text cursor blink speed.
 #define SEND_BUFFER_SIZE 61 // Size including null terminating character.
-
-// define GG Link stuff
-__sfr __at 0x01 G2G_IOPinPort;
-__sfr __at 0x02 G2G_NMIPort;
-__sfr __at 0x03 G2G_TxPort;
-__sfr __at 0x04 G2G_RxPort;
-__sfr __at 0x05 G2G_StatusPort;
 
 #define G2G_BYTE_SENT 0x01
 #define G2G_BYTE_RECV 0x02
@@ -22,35 +15,40 @@ __sfr __at 0x05 G2G_StatusPort;
 
 #define STRING_OFFSET (-32)
 
-const unsigned char cursor_sprite[32] = {
+// define GG Link stuff.
+__sfr __at 0x01 G2G_IOPinPort;
+__sfr __at 0x02 G2G_NMIPort;
+__sfr __at 0x03 G2G_TxPort;
+__sfr __at 0x04 G2G_RxPort;
+__sfr __at 0x05 G2G_StatusPort;
+
+static char text[11][21];
+static int writeIndex = 0;
+
+static uint8_t recv_x = 6;
+static uint8_t recv_y = 3;
+
+static const unsigned char cursor_sprite[32] = {
     0xFF, 0x00, 0x00, 0x00, 0xFF, 0x00, 0x00, 0x00, 0xFF, 0x00, 0x00, 0x00, 0xFF, 0x00, 0x00, 0x00,
     0xFF, 0x00, 0x00, 0x00, 0xFF, 0x00, 0x00, 0x00, 0xFF, 0x00, 0x00, 0x00, 0xFF, 0x00, 0x00, 0x00};
 
-void putstring(uint8_t x, uint8_t y, const char *string)
-{
-    SMS_setNextTileatXY(x, y);
-    while (*string)
-    {
-        SMS_setTile(*string++ + STRING_OFFSET);
-    }
-}
+volatile char receiveBuffer[SEND_BUFFER_SIZE];
+volatile uint8_t receiveCount = 0;
+volatile bool endMessage = false;
 
-/*void SMS_nmi_isr (void) __critical __interrupt
-{
-    recByte=G2G_RxPort;
-}*/
+void SMS_nmi_isr (void) __critical __interrupt;
+void putstring(uint8_t x, uint8_t y, const char *string);
+void UpdateMessage();
 
 void main(void)
 {
-    uint8_t keyPress, char_x, char_y, send_x, send_y, recv_x, recv_y;
-    int8_t index;
+    uint8_t keyPress, char_x, char_y, send_x, send_y;
+    int index;
     uint8_t timer = BLINKSPEED;
     char sendBuffer[SEND_BUFFER_SIZE];
-    char receiveBuffer[SEND_BUFFER_SIZE];
-    char recByte;
     bool blink = false;
-
-    SMS_VRAMmemsetW(XYtoADDR(0, 0), 0, 32 * 28 * 2); // Initialise VRAM
+    
+    SMS_VRAMmemsetW(XYtoADDR(0, 0), 0, 32 * 28 * 2); // Initialise VRAM.
 
     SMS_useFirstHalfTilesforSprites(true);
     SMS_autoSetUpTextRenderer();
@@ -59,18 +57,13 @@ void main(void)
 
     G2G_IOPinPort = 0x00;
     G2G_NMIPort = 0xFF;
-    G2G_StatusPort = 0x30; // 4800 baud
-    //G2G_StatusPort = 0xB0; // 1200 baud
-    //G2G_StatusPort = 0xF0; // 300 baud
-    //G2G_StatusPort = G2G_ENABLE_SEND|G2G_ENABLE_RECV;
+    G2G_StatusPort = 0x38; // 4800 baud, NMI enabled.
 
     char_x = 6;
     char_y = 19;
     index = 0;
     send_x = 6;
     send_y = 15;
-    recv_x = 6;
-    recv_y = 3;
 
     putstring(6, 14, "--------------------");
 
@@ -85,13 +78,48 @@ void main(void)
 
         SMS_waitForVBlank();
 
-        // check for incoming byte
-        if ((G2G_StatusPort & G2G_BYTE_RECV) != 0)
+        if(endMessage)
         {
-            SMS_setNextTileatXY(recv_x, recv_y);
-            recByte = G2G_RxPort;
-            SMS_setTile(recByte + STRING_OFFSET);
-            recv_x++;
+            const char *src;
+            char *dst;
+            src = receiveBuffer;
+            dst = text[writeIndex];
+            int n = 0;
+            while(*src)
+            {
+                *dst = *src;
+                src++;
+                dst++;
+                n++;
+                if(n >= 20 && *src)
+                {
+                    *dst = '\0';
+                    n=0;
+                    writeIndex++;
+                    if(writeIndex >= 11)
+                    {
+                        writeIndex = 0;
+                    }
+                    dst = text[writeIndex];
+                }
+            }
+            *dst = '\0';
+            writeIndex++;
+            if(writeIndex >= 11)
+            {
+                writeIndex = 0;
+            }
+            receiveCount = 0;
+            endMessage = false;
+            UpdateMessage();
+            // Insert blank line to improve readability.
+            dst = text[writeIndex];
+            *dst = '\0';
+            writeIndex++;
+            if(writeIndex >= 11)
+            {
+                writeIndex = 0;
+            }
         }
 
         keyPress = SMS_getKeysPressed();
@@ -132,7 +160,7 @@ void main(void)
         else if (keyPress & PORT_A_KEY_1)
         {
             // Maybe there's a better way to handle this... but it works!
-            if (char_x == 12 && char_y == 20) // Handle space
+            if (char_x == 12 && char_y == 20) // Handle space.
             {
                 if (send_x < 26)
                 {
@@ -145,7 +173,7 @@ void main(void)
                     send_x++;
                 }
             }
-            else if (char_x == 13 && char_y == 20) // Handle full stop
+            else if (char_x == 13 && char_y == 20) // Handle full stop.
             {
                 if (send_x < 26)
                 {
@@ -158,7 +186,7 @@ void main(void)
                     send_x++;
                 }
             }
-            else if (char_x == 14 && char_y == 20) // Handle backspace
+            else if (char_x == 14 && char_y == 20) // Handle backspace.
             {
                 if (send_x > 6 || send_y > 15)
                 {
@@ -174,7 +202,7 @@ void main(void)
                     SMS_setTile(0);
                 }
             }
-            else // Handle standard characters
+            else // Handle standard characters.
             {
                 if (send_x < 26)
                 {
@@ -204,9 +232,9 @@ void main(void)
                     send_x = 26;
             }
         }
-        else if (keyPress & PORT_A_KEY_2) // Send whatever is in our buffer over the link
+        else if (keyPress & PORT_A_KEY_2 && index > 0) // Send whatever is in our buffer over the link.
         {
-            for (int i = 0; i < index; i++)
+            for (int i = 0; i < (index+1); i++)
             {
                 while ((G2G_StatusPort & G2G_BYTE_SENT) != 0);
                 G2G_TxPort = sendBuffer[i];
@@ -216,9 +244,10 @@ void main(void)
             sendBuffer[index] = '\0';
             send_x = 6;
             send_y = 15;
-            putstring(6, 15, "                    ");
-            putstring(6, 16, "                    ");
-            putstring(6, 17, "                    ");
+            // Clear send window.
+            SMS_VRAMmemsetW(XYtoADDR(6, 15), 0, 20 * 2);
+            SMS_VRAMmemsetW(XYtoADDR(6, 16), 0, 20 * 2);
+            SMS_VRAMmemsetW(XYtoADDR(6, 17), 0, 20 * 2);
         }
 
         if (--timer == 0)
@@ -233,6 +262,41 @@ void main(void)
         }
 
         SMS_copySpritestoSAT();
+    }
+}
+
+void SMS_nmi_isr (void) __critical __interrupt
+{
+    if(receiveCount >= SEND_BUFFER_SIZE)
+        return;
+
+    receiveBuffer[receiveCount]=G2G_RxPort;
+    if(receiveBuffer[receiveCount] == '\0')
+        endMessage = true;
+    receiveCount++;
+}
+
+void putstring(uint8_t x, uint8_t y, const char *string)
+{
+    SMS_setNextTileatXY(x, y);
+    while (*string)
+    {
+        SMS_setTile(*string++ + STRING_OFFSET);
+    }
+}
+
+void UpdateMessage()
+{
+    int startIndex = writeIndex;
+    recv_y=3;
+    for(int i=0; i < 11; i++)
+    {
+        if(startIndex >= 11)
+            startIndex = 0;
+        SMS_VRAMmemsetW(XYtoADDR(recv_x, recv_y), 0, 20 * 2);
+        putstring(recv_x, recv_y, text[startIndex]);
+        recv_y++;
+        startIndex++;
     }
 }
 
