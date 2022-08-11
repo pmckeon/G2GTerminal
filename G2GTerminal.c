@@ -2,9 +2,10 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include "SMSlib.h"
+#include "font.h"
 
 #define BLINKSPEED 10 // Text cursor blink speed.
-#define SEND_BUFFER_SIZE 61 // Size including null terminating character.
+#define SEND_BUFFER_SIZE 79 // Size including null terminating character.
 
 #define G2G_BYTE_SENT 0x01
 #define G2G_BYTE_RECV 0x02
@@ -13,7 +14,7 @@
 #define G2G_ENABLE_SEND 0x10
 #define G2G_ENABLE_RECV 0x20
 
-#define STRING_OFFSET (-32)
+#define STRING_OFFSET (0)
 
 // define GG Link stuff.
 __sfr __at 0x01 G2G_IOPinPort;
@@ -42,7 +43,8 @@ void UpdateMessage();
 
 void main(void)
 {
-    uint8_t keyPress, char_x, char_y, send_x, send_y;
+    uint8_t char_x, char_y, send_x, send_y;
+    unsigned int keyPress;
     int index;
     uint8_t timer = BLINKSPEED;
     char sendBuffer[SEND_BUFFER_SIZE];
@@ -51,26 +53,30 @@ void main(void)
     SMS_VRAMmemsetW(XYtoADDR(0, 0), 0, 32 * 28 * 2); // Initialise VRAM.
 
     SMS_useFirstHalfTilesforSprites(true);
-    SMS_autoSetUpTextRenderer();
-    SMS_loadTiles(cursor_sprite, 96, 32);
+    SMS_load1bppTiles(CP437_8x8__1bpp,0,sizeof(CP437_8x8__1bpp),0,1);
+    GG_setBGPaletteColor (0, RGB(0,0,0));
+    GG_setBGPaletteColor (1, RGB(15,15,15));
     GG_setSpritePaletteColor(1, 0xFEDF);
+    SMS_displayOn();
 
     G2G_IOPinPort = 0x00;
     G2G_NMIPort = 0xFF;
     G2G_StatusPort = 0x38; // 4800 baud, NMI enabled.
 
     char_x = 6;
-    char_y = 19;
+    char_y = 15;
     index = 0;
-    send_x = 6;
+    send_x = 13;
     send_y = 15;
 
-    putstring(6, 14, "--------------------");
+    putstring(6, 14, "\xCD\xCD\xCD\xCD\xCD\xCD\xCB\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD");
 
-    putstring(6, 18, "--------------------");
-
-    putstring(6, 19, "ABCDEFGHIJKLMNOPQRST");
-    putstring(6, 20, "UVWXYZ .<");
+    putstring(6, 15, "ABCDEF\xBA");
+    putstring(6, 16, "GHIJKL\xBA");
+    putstring(6, 17, "MNOPQR\xBA");
+    putstring(6, 18, "STUVWX\xBA");
+    putstring(6, 19, "YZ .,!\xBA");
+    putstring(6, 20, "?\x1B    \xBA");
 
     for (;;)
     {
@@ -126,17 +132,17 @@ void main(void)
         if (keyPress & PORT_A_KEY_UP)
         {
             char_y--;
-            if (char_y < 19)
-                char_y = 19;
+            if (char_y < 15)
+                char_y = 15;
         }
         else if (keyPress & PORT_A_KEY_DOWN)
         {
             char_y++;
             if (char_y > 20)
                 char_y = 20;
-            if (char_x > 14 && char_y == 20)
+            if (char_x > 7 && char_y == 20)
             {
-                char_x = 14;
+                char_x = 7;
                 char_y = 20;
             }
         }
@@ -149,18 +155,18 @@ void main(void)
         else if (keyPress & PORT_A_KEY_RIGHT)
         {
             char_x++;
-            if (char_x > 14 && char_y == 20)
+            if (char_x > 7 && char_y == 20)
             {
-                char_x = 14;
+                char_x = 7;
                 char_y = 20;
             }
-            if (char_x > 25)
-                char_x = 25;
+            if (char_x > 11)
+                char_x = 11;
         }
         else if (keyPress & PORT_A_KEY_1)
         {
             // Maybe there's a better way to handle this... but it works!
-            if (char_x == 12 && char_y == 20) // Handle space.
+            if (char_x == 8 && char_y == 19) // Handle space.
             {
                 if (send_x < 26)
                 {
@@ -173,7 +179,7 @@ void main(void)
                     send_x++;
                 }
             }
-            else if (char_x == 13 && char_y == 20) // Handle full stop.
+            else if (char_x == 9 && char_y == 19) // Handle full stop.
             {
                 if (send_x < 26)
                 {
@@ -186,7 +192,46 @@ void main(void)
                     send_x++;
                 }
             }
-            else if (char_x == 14 && char_y == 20) // Handle backspace.
+            else if (char_x == 10 && char_y == 19) // Handle comma.
+            {
+                if (send_x < 26)
+                {
+                    sendBuffer[index] = ',';
+                    sendBuffer[index + 1] = '\0';
+                    SMS_setNextTileatXY(send_x, send_y);
+                    SMS_setTile(sendBuffer[index] + STRING_OFFSET);
+
+                    index++;
+                    send_x++;
+                }
+            }
+            else if (char_x == 11 && char_y == 19) // Handle exclamation mark.
+            {
+                if (send_x < 26)
+                {
+                    sendBuffer[index] = '!';
+                    sendBuffer[index + 1] = '\0';
+                    SMS_setNextTileatXY(send_x, send_y);
+                    SMS_setTile(sendBuffer[index] + STRING_OFFSET);
+
+                    index++;
+                    send_x++;
+                }
+            }
+            else if (char_x == 6 && char_y == 20) // Handle full question mark.
+            {
+                if (send_x < 26)
+                {
+                    sendBuffer[index] = '?';
+                    sendBuffer[index + 1] = '\0';
+                    SMS_setNextTileatXY(send_x, send_y);
+                    SMS_setTile(sendBuffer[index] + STRING_OFFSET);
+
+                    index++;
+                    send_x++;
+                }
+            }
+            else if (char_x == 7 && char_y == 20) // Handle backspace.
             {
                 if (send_x > 6 || send_y > 15)
                 {
@@ -206,9 +251,9 @@ void main(void)
             {
                 if (send_x < 26)
                 {
-                    sendBuffer[index] = char_x + 59;
-                    if (char_y == 20)
-                        sendBuffer[index] += 20;
+                    int offset_x = char_x + 59;
+                    int offset_y = char_y - 15;
+                    sendBuffer[index] = offset_x + (offset_y * 6);
                     sendBuffer[index + 1] = '\0';
                     SMS_setNextTileatXY(send_x, send_y);
                     SMS_setTile(sendBuffer[index] + STRING_OFFSET);
@@ -223,10 +268,10 @@ void main(void)
                 index = SEND_BUFFER_SIZE;
             if (send_x > 25)
             {
-                if (send_y < 17)
+                if (send_y < 20)
                 {
                     send_y++;
-                    send_x = 6;
+                    send_x = 13;
                 }
                 else
                     send_x = 26;
@@ -234,6 +279,7 @@ void main(void)
         }
         else if (keyPress & PORT_A_KEY_2 && index > 0) // Send whatever is in our buffer over the link.
         {
+            sendBuffer[index] = '\n'; // Terminal emulators expect a new line as terminating character.
             for (int i = 0; i < (index+1); i++)
             {
                 while ((G2G_StatusPort & G2G_BYTE_SENT) != 0);
@@ -242,12 +288,15 @@ void main(void)
 
             index = 0;
             sendBuffer[index] = '\0';
-            send_x = 6;
+            send_x = 13;
             send_y = 15;
             // Clear send window.
-            SMS_VRAMmemsetW(XYtoADDR(6, 15), 0, 20 * 2);
-            SMS_VRAMmemsetW(XYtoADDR(6, 16), 0, 20 * 2);
-            SMS_VRAMmemsetW(XYtoADDR(6, 17), 0, 20 * 2);
+            SMS_VRAMmemsetW(XYtoADDR(13, 15), 0, 13 * 2);
+            SMS_VRAMmemsetW(XYtoADDR(13, 16), 0, 13 * 2);
+            SMS_VRAMmemsetW(XYtoADDR(13, 17), 0, 13 * 2);
+            SMS_VRAMmemsetW(XYtoADDR(13, 18), 0, 13 * 2);
+            SMS_VRAMmemsetW(XYtoADDR(13, 19), 0, 13 * 2);
+            SMS_VRAMmemsetW(XYtoADDR(13, 20), 0, 13 * 2);
         }
 
         if (--timer == 0)
@@ -258,7 +307,7 @@ void main(void)
 
         if (blink)
         {
-            SMS_addSprite(char_x * 8, char_y * 8, 96);
+            SMS_addSprite(char_x * 8, char_y * 8, 219);
         }
 
         SMS_copySpritestoSAT();
@@ -271,8 +320,11 @@ void SMS_nmi_isr (void) __critical __interrupt
         return;
 
     receiveBuffer[receiveCount]=G2G_RxPort;
-    if(receiveBuffer[receiveCount] == '\0')
+    if(receiveBuffer[receiveCount] == '\n')
+    {
+        receiveBuffer[receiveCount]='\0';
         endMessage = true;
+    }
     receiveCount++;
 }
 
